@@ -261,29 +261,31 @@ function sendToClaude(prompt) {
 
   // Use --resume on every call after the first. Easiest: always pass
   // --session-id; Claude Code creates it on first use and reuses thereafter.
-  const args = ['-p', prompt];
+  // The prompt itself goes via stdin to avoid Windows shell argument splitting
+  // (cmd.exe with `shell: true` will space-split a positional prompt arg into
+  // separate tokens — Claude would only see the first word).
+  const args = ['-p'];
   if (aiFirstCall) {
-    // Create the session with our known ID on the first call.
     args.push('--session-id', sessionId);
     aiFirstCall = false;
   } else {
-    // Resume the same session on every subsequent call so Claude remembers
-    // the conversation.
     args.push('--resume', sessionId);
   }
   args.push('--permission-mode', process.env.CLAUDE_GHOST_PERMISSION_MODE || 'bypassPermissions');
 
-  // Optional model override (e.g. CLAUDE_GHOST_MODEL=opus)
   if (process.env.CLAUDE_GHOST_MODEL) {
     args.push('--model', process.env.CLAUDE_GHOST_MODEL);
   }
 
   aiChild = spawn('claude', args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     shell: true,
     cwd: process.cwd(),
     env: process.env,
   });
+
+  aiChild.stdin.write(prompt);
+  aiChild.stdin.end();
 
   aiChild.stdout.on('data', (chunk) => {
     // Raw mode terminals need \r\n, not bare \n. Strip OSC title-changes
