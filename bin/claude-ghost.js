@@ -55,6 +55,16 @@ let aiTranscript = '';    // everything ever shown in AI mode, replayed on re-en
 let aiFirstCall = true;   // first claude invocation creates the session; later calls resume it
 const sessionId = crypto.randomUUID();
 
+// Strip terminal-title-setting OSC sequences:
+//   ESC ] 0|1|2 ; <title> BEL
+//   ESC ] 0|1|2 ; <title> ESC \
+// Claude Code sets the title to "claude" via these — we filter them out so
+// the terminal window/tab title stays whatever it was.
+const TITLE_OSC = /\x1b\][0-2];[^\x07\x1b]*?(?:\x07|\x1b\\)/g;
+function stripTitle(s) {
+  return s.replace(TITLE_OSC, '');
+}
+
 // Write to terminal AND record into the AI transcript so a future toggle
 // can replay the whole conversation.
 function aiWrite(s) {
@@ -276,12 +286,13 @@ function sendToClaude(prompt) {
   });
 
   aiChild.stdout.on('data', (chunk) => {
-    // Raw mode terminals need \r\n, not bare \n
-    aiWrite(chunk.toString().replace(/\r?\n/g, '\r\n'));
+    // Raw mode terminals need \r\n, not bare \n. Strip OSC title-changes
+    // so the terminal title doesn't flip to "claude".
+    aiWrite(stripTitle(chunk.toString()).replace(/\r?\n/g, '\r\n'));
   });
 
   aiChild.stderr.on('data', (chunk) => {
-    aiWrite(DIM + RED + chunk.toString().replace(/\r?\n/g, '\r\n') + RESET);
+    aiWrite(DIM + RED + stripTitle(chunk.toString()).replace(/\r?\n/g, '\r\n') + RESET);
   });
 
   aiChild.on('error', (err) => {
