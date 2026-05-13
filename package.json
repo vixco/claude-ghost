@@ -1,0 +1,19 @@
+{
+  "name": "claude-ghost",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stealth terminal wrapper that toggles between PowerShell and Claude Code via Shift+Tab",
+  "bin": {
+    "claude-ghost": "bin/claude-ghost.js"
+  },
+  "main": "bin/claude-ghost.js",
+  "scripts": {
+    "start": "node bin/claude-ghost.js"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
