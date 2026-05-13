@@ -6,3 +6,5 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+.claude/
+memory/
