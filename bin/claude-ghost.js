@@ -52,6 +52,7 @@ let aiBuffer = '';        // current line being typed in AI mode
 let aiBusy = false;
 let aiChild = null;
 let aiTranscript = '';    // everything ever shown in AI mode, replayed on re-entry
+let aiFirstCall = true;   // first claude invocation creates the session; later calls resume it
 const sessionId = crypto.randomUUID();
 
 // Write to terminal AND record into the AI transcript so a future toggle
@@ -246,11 +247,17 @@ function sendToClaude(prompt) {
 
   // Use --resume on every call after the first. Easiest: always pass
   // --session-id; Claude Code creates it on first use and reuses thereafter.
-  const args = [
-    '-p', prompt,
-    '--session-id', sessionId,
-    '--permission-mode', process.env.CLAUDE_GHOST_PERMISSION_MODE || 'bypassPermissions',
-  ];
+  const args = ['-p', prompt];
+  if (aiFirstCall) {
+    // Create the session with our known ID on the first call.
+    args.push('--session-id', sessionId);
+    aiFirstCall = false;
+  } else {
+    // Resume the same session on every subsequent call so Claude remembers
+    // the conversation.
+    args.push('--resume', sessionId);
+  }
+  args.push('--permission-mode', process.env.CLAUDE_GHOST_PERMISSION_MODE || 'bypassPermissions');
 
   // Optional model override (e.g. CLAUDE_GHOST_MODEL=opus)
   if (process.env.CLAUDE_GHOST_MODEL) {
