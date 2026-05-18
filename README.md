@@ -68,7 +68,7 @@ claude-ghost
 
 | Key | Action |
 | --- | --- |
-| **F12** | Toggle between shell and AI mode. Exiting AI mode wipes the screen + scrollback (killswitch); re-entering replays your prior chat. |
+| **F12** *or* **Shift+Tab** | Toggle between shell and AI mode. Both are enabled by default — use Shift+Tab if your laptop's Fn key swallows F12. Exiting AI mode wipes the screen + scrollback (killswitch); re-entering replays your prior chat. |
 | **Enter** | (AI mode) Send the current line to Claude |
 | **Backspace** | (AI mode) Edit the current line |
 | **Ctrl+C** | (AI mode) Cancel a running Claude response |
@@ -83,7 +83,7 @@ All optional. Set as environment variables before launching `claude-ghost`.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `CLAUDE_GHOST_SHELL` | `powershell.exe` | Shell to spawn inside the PTY (e.g. `pwsh.exe` for PowerShell 7) |
-| `CLAUDE_GHOST_TOGGLE_KEYS` | F12 (`1b5b32347e`) | Comma-separated hex sequences of the keys that toggle modes. Override to use any key your terminal emits (e.g. `1b5b32347e,1b5b5a` to allow F12 **and** Shift+Tab) |
+| `CLAUDE_GHOST_TOGGLE_KEYS` | F12 + Shift+Tab (`1b5b32347e,1b5b5a`) | Comma-separated hex sequences of the keys that toggle modes. Override to use any key(s) your terminal emits. |
 | `CLAUDE_GHOST_MODEL` | *(unset — uses your Claude Code default)* | Model alias (e.g. `opus`, `sonnet`) passed through to `claude --model` |
 | `CLAUDE_GHOST_PERMISSION_MODE` | `bypassPermissions` | Forwarded as `claude --permission-mode`. By default Claude is allowed to do everything without asking — convenient but only safe in directories you trust. Set to `default` for normal prompting, or `acceptEdits` to allow file edits only. |
 | `CLAUDE_GHOST_DEBUG_KEYS` | unset | When `1`, prints the hex of every keystroke to stderr instead of doing anything else. Use to discover your terminal's actual toggle byte sequence. |

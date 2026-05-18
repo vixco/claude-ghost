@@ -30,9 +30,12 @@ const ENTER_LF = '\n';
 const BACKSPACE = '\x7f';
 const BACKSPACE_ALT = '\b';
 
-// Toggle key: F12. Override with env var CLAUDE_GHOST_TOGGLE_KEYS,
-// comma-separated hex strings, e.g. "1b5b32347e,1b5b5a"
-const DEFAULT_TOGGLES = [F12];
+// Toggle keys: F12 and Shift+Tab. Both are enabled by default because F12 is
+// frequently swallowed by laptop Fn-key hardware mappings (volume, brightness,
+// etc.). Shift+Tab is a reliable fallback on virtually every keyboard.
+// Override with env var CLAUDE_GHOST_TOGGLE_KEYS, comma-separated hex strings,
+// e.g. "1b5b32347e,1b5b5a"
+const DEFAULT_TOGGLES = [F12, SHIFT_TAB];
 const TOGGLE_KEYS = (() => {
   const raw = process.env.CLAUDE_GHOST_TOGGLE_KEYS;
   if (!raw) return DEFAULT_TOGGLES;
