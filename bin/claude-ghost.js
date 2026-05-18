@@ -44,6 +44,69 @@ const TOGGLE_KEYS = (() => {
 
 const DEBUG_KEYS = process.env.CLAUDE_GHOST_DEBUG_KEYS === '1';
 
+// Win32-input-mode: legacy conhost (and some Windows terminals when ENABLE_VIRTUAL_TERMINAL_INPUT
+// is not used) deliver keystrokes as `ESC[Vk;Sc;Uc;Kd;Cs;Rc_` events instead of standard VT
+// escape sequences. Without parsing these, F12 / Shift+Tab and even normal typing in AI mode
+// look like opaque escape blobs and toggles never fire.
+//
+// Modifier bitmask (Cs field):
+//   0x01 RIGHT_ALT  0x02 LEFT_ALT  0x04 RIGHT_CTRL  0x08 LEFT_CTRL  0x10 SHIFT
+//   0x20 NUMLOCK    0x40 SCROLLLOCK  0x80 CAPSLOCK  0x100 ENHANCED_KEY
+const WIN32_INPUT_RE = /\x1b\[(\d+);(\d+);(\d+);(\d+);(\d+);(\d+)_/g;
+const MOD_CTRL_ALT = 0x0F; // any ctrl or alt bit
+const MOD_SHIFT = 0x10;
+const MOD_CTRL_ALT_SHIFT = 0x1F;
+const VK_TAB = 9;
+const VK_F12 = 123;
+
+// Parse a chunk that may contain win32-input-mode events mixed with raw bytes.
+// Returns:
+//   foundAny  — true if at least one win32-input event was matched
+//   toggles   — count of toggle-keydown events to fire
+//   shellPass — bytes to forward to the PTY in shell mode (events preserved verbatim)
+//   aiChars   — decoded printable/control characters for the AI-mode line editor
+function parseWin32Input(data) {
+  let foundAny = false;
+  let toggles = 0;
+  let shellPass = '';
+  let aiChars = '';
+  let lastIndex = 0;
+  WIN32_INPUT_RE.lastIndex = 0;
+  let m;
+  while ((m = WIN32_INPUT_RE.exec(data)) !== null) {
+    foundAny = true;
+    const pre = data.slice(lastIndex, m.index);
+    shellPass += pre;
+    aiChars += pre;
+
+    const full = m[0];
+    const vk = +m[1];
+    const uc = +m[3];
+    const kd = +m[4];
+    const cs = +m[5];
+
+    const isToggle = kd === 1 && (
+      (vk === VK_TAB && (cs & MOD_SHIFT) && !(cs & MOD_CTRL_ALT)) ||
+      (vk === VK_F12 && !(cs & MOD_CTRL_ALT_SHIFT))
+    );
+
+    if (isToggle) {
+      toggles++;
+      // Swallow the event entirely so PSReadLine never sees the Tab/F12 press.
+    } else {
+      shellPass += full;
+      if (kd === 1 && uc > 0) {
+        aiChars += String.fromCharCode(uc);
+      }
+    }
+    lastIndex = WIN32_INPUT_RE.lastIndex;
+  }
+  const tail = data.slice(lastIndex);
+  shellPass += tail;
+  aiChars += tail;
+  return { foundAny, toggles, shellPass, aiChars };
+}
+
 // Visual styling for AI mode — kept ultra-minimal so it doesn't shout "AI"
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -131,6 +194,19 @@ process.stdin.on('data', (data) => {
   // a toggle byte embedded in a larger paste.
   if (TOGGLE_KEYS.includes(data)) {
     toggleMode();
+    return;
+  }
+
+  // Legacy conhost path: input arrives as win32-input-mode events, not VT
+  // escape sequences. Parse them so toggles still fire and AI-mode typing works.
+  const parsed = parseWin32Input(data);
+  if (parsed.foundAny) {
+    for (let i = 0; i < parsed.toggles; i++) toggleMode();
+    if (mode === 'shell') {
+      if (parsed.shellPass.length > 0) ptyProcess.write(parsed.shellPass);
+    } else if (parsed.aiChars.length > 0) {
+      handleAiInput(parsed.aiChars);
+    }
     return;
   }
 
