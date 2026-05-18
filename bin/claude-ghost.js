@@ -13,9 +13,26 @@
  */
 
 const pty = require('node-pty');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const crypto = require('crypto');
 const os = require('os');
+
+// Resolve the `claude` executable once. On Windows it is typically installed as
+// `claude.cmd`, which spawn() can't find without shell:true — but shell:true
+// triggers Node's DEP0190 deprecation warning and is mildly unsafe. Resolving
+// the full path up-front lets us spawn with shell:false: faster, warning-free,
+// and the prompt arg avoids any cmd.exe quoting weirdness (we use stdin anyway).
+const CLAUDE_BIN = (() => {
+  const finder = process.platform === 'win32' ? 'where.exe' : 'which';
+  try {
+    const r = spawnSync(finder, ['claude'], { encoding: 'utf8' });
+    if (r.status === 0) {
+      const first = r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+      if (first) return first;
+    }
+  } catch (_) {}
+  return process.platform === 'win32' ? 'claude.cmd' : 'claude';
+})();
 
 const SHELL = process.env.CLAUDE_GHOST_SHELL || 'powershell.exe';
 const SHELL_ARGS = SHELL.toLowerCase().includes('powershell') ? ['-NoLogo'] : [];
@@ -58,6 +75,18 @@ const MOD_SHIFT = 0x10;
 const MOD_CTRL_ALT_SHIFT = 0x1F;
 const VK_TAB = 9;
 const VK_F12 = 123;
+
+// Claude Code sets the outer terminal window title to "claude" via the Win32
+// SetConsoleTitle API — that's a direct console call, not a byte in stdout, so
+// stripTitle() (which only filters OSC sequences) can't catch it. To keep the
+// terminal looking like a normal shell, write our own OSC title-set to the
+// outer stdout at startup and after every claude invocation. Override via
+// CLAUDE_GHOST_TITLE.
+const RESTORE_TITLE = (() => {
+  const t = process.env.CLAUDE_GHOST_TITLE
+    || (process.platform === 'win32' ? 'Windows PowerShell' : '');
+  return t ? `\x1b]0;${t}\x07` : '';
+})();
 
 // Parse a chunk that may contain win32-input-mode events mixed with raw bytes.
 // Returns:
@@ -177,6 +206,10 @@ if (!process.stdin.isTTY) {
 process.stdin.setRawMode(true);
 process.stdin.resume();
 process.stdin.setEncoding('utf8');
+
+// Pre-emptively claim the title so the first claude run's SetConsoleTitle
+// is immediately undone on close.
+if (RESTORE_TITLE) process.stdout.write(RESTORE_TITLE);
 
 if (DEBUG_KEYS) {
   process.stderr.write('[claude-ghost] DEBUG_KEYS on. Press keys to see hex. Ctrl+C to exit.\r\n');
@@ -356,11 +389,12 @@ function sendToClaude(prompt) {
     args.push('--model', process.env.CLAUDE_GHOST_MODEL);
   }
 
-  aiChild = spawn('claude', args, {
+  aiChild = spawn(CLAUDE_BIN, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
-    shell: true,
+    shell: false,
     cwd: process.cwd(),
     env: process.env,
+    windowsHide: true,
   });
 
   aiChild.stdin.write(prompt);
@@ -386,6 +420,8 @@ function sendToClaude(prompt) {
   aiChild.on('close', () => {
     aiBusy = false;
     aiChild = null;
+    // Undo any window-title change claude made via SetConsoleTitle.
+    if (RESTORE_TITLE) process.stdout.write(RESTORE_TITLE);
     aiWrite('\r\n');
     if (mode === 'ai') showPrompt();
   });
